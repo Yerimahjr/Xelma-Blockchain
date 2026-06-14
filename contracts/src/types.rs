@@ -69,6 +69,8 @@ pub enum DataKey {
     OracleHeartbeat,
     /// Stale-heartbeat threshold in seconds (admin-configurable); unset = 3600 s default
     OracleStaleThreshold,
+    /// Maximum participants accepted in a Precision round; unset = protocol default
+    MaxPrecisionParticipants,
     /// Oracle max deviation threshold in basis points (1 bp = 0.01%).
     /// If unset, deviation guardrails are disabled.
     OracleMaxDeviationBps,
