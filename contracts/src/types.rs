@@ -91,6 +91,10 @@ pub enum DataKey {
     /// Admin withdraws via the dedicated withdrawal method; does NOT mix
     /// into the per-user balance ledger.
     ProtocolFeeTreasury,
+    /// Per-ledger mint counter: wraps the explicit ledger sequence number.
+    LedgerMintCounter(u32),
+    /// Mint limit configuration: maximum number of mints allowed per ledger.
+    MintLimitConfig,
 }
 
 /// Identifies which critical risk setting is pending timelocked activation.

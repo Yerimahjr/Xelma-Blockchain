@@ -866,6 +866,26 @@ impl VirtualTokenContract {
             .unwrap_or(DEFAULT_MAX_PRECISION_PARTICIPANTS)
     }
 
+    /// Sets the maximum number of mints allowed per ledger (admin only).
+    /// Pass 0 to disable the limit.
+    pub fn set_mint_limit(env: Env, limit: u32) -> Result<(), ContractError> {
+        let admin: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Admin)
+            .ok_or(ContractError::AdminNotSet)?;
+        admin.require_auth();
+        Self::_ensure_not_paused(&env)?;
+
+        env.storage().instance().set(&DataKey::MintLimitConfig, &limit);
+        Ok(())
+    }
+
+    /// Returns the configured mint limit per ledger, or 0 if disabled.
+    pub fn get_mint_limit(env: Env) -> u32 {
+        env.storage().instance().get(&DataKey::MintLimitConfig).unwrap_or(0)
+    }
+
     /// Returns user statistics (wins, losses, streaks)
     pub fn get_user_stats(env: Env, user: Address) -> UserStats {
         let key = DataKey::UserStats(user);
@@ -2749,6 +2769,19 @@ impl VirtualTokenContract {
         if let Some(existing_balance) = env.storage().persistent().get(&key) {
             Self::_extend_persistent_ttl(&env, &key);
             return existing_balance;
+        }
+
+        // Rate limit check: retrieve current ledger height and check against limit config.
+        let sequence = env.ledger().sequence();
+        if let Some(limit) = env.storage().instance().get::<_, u32>(&DataKey::MintLimitConfig) {
+            if limit > 0 {
+                let counter_key = DataKey::LedgerMintCounter(sequence);
+                let current_count = env.storage().temporary().get::<_, u32>(&counter_key).unwrap_or(0);
+                if current_count >= limit {
+                    panic_with_error!(&env, ContractError::MintLimitExceeded);
+                }
+                env.storage().temporary().set(&counter_key, &(current_count + 1));
+            }
         }
 
         let initial_amount: i128 = 1000_0000000;

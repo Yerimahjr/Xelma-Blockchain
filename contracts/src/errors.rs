@@ -111,4 +111,6 @@ pub enum ContractError {
     InvalidProtocolFeeBps = 51,
     /// Treasury withdrawal would underflow the accumulated treasury balance
     FeeTreasuryUnderflow = 52,
+    /// Rate limit for minting in the current ledger has been exceeded
+    MintLimitExceeded = 53,
 }
