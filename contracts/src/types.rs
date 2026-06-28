@@ -115,6 +115,10 @@ pub enum ConfigChangeKind {
     /// Optional protocol settlement fee in bps (Issue #162).
     /// `None` disables the fee entirely, restoring pre-fee behaviour.
     ProtocolFeeBps = 6,
+    MinParticipants = 7,
+    MaxPrecisionParticipants = 8,
+    MintLimit = 9,
+    ArchiveRetention = 10,
 }
 
 /// Payload for a scheduled critical config change.
@@ -128,6 +132,10 @@ pub enum ConfigChangePayload {
     OracleStaleThreshold(u64),
     OracleMaxDeviationBps(Option<u32>),
     ProtocolFeeBps(Option<u32>),
+    MinParticipants(Option<u32>),
+    MaxPrecisionParticipants(u32),
+    MintLimit(u32),
+    ArchiveRetention(u32),
 }
 
 /// Pending timelocked config change with activation ledger for on-chain observability.
