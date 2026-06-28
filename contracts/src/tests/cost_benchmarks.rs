@@ -154,6 +154,7 @@ fn bench_cost_resolve_round() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     };
     let (cpu, mem, _) = measure(&env, || client.resolve_round(&payload));
     report("resolve_round", cpu, mem);
@@ -187,6 +188,7 @@ fn bench_cost_claim_winnings() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     let (cpu, mem, claimed) = measure(&env, || client.claim_winnings(&alice));
@@ -195,3 +197,5 @@ fn bench_cost_claim_winnings() {
     assert!(cpu <= CLAIM_CPU_MAX, "claim_winnings CPU regression: {cpu}");
     assert!(mem <= CLAIM_MEM_MAX, "claim_winnings MEM regression: {mem}");
 }
+
+

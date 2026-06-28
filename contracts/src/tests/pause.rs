@@ -99,6 +99,7 @@ fn test_mutations_fail_while_paused() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
     assert_eq!(resolve_result, Err(Ok(ContractError::ContractPaused)));
 
@@ -117,3 +118,5 @@ fn test_mint_initial_fails_while_paused() {
     let result = client.try_mint_initial(&user);
     assert!(result.is_err());
 }
+
+

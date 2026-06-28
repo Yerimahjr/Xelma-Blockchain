@@ -211,6 +211,7 @@ fn test_event_coverage_resolve_round() {
         nonce: 1,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     let events = env.events().all();
@@ -226,7 +227,10 @@ fn test_event_coverage_resolve_round() {
         topics.get(1).unwrap().try_into_val(&env),
         Ok(symbol_short!("resolved"))
     );
-    assert_eq!(data.try_into_val(&env), Ok((1u64, 1_2000000u128, 0u32)));
+    assert_eq!(
+        data.try_into_val(&env),
+        Ok((1u64, 1_2000000u128, 0u32, Option::<u32>::None))
+    );
 }
 
 #[test]
@@ -271,6 +275,7 @@ fn test_event_coverage_claim_winnings() {
         nonce: 1,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     client.claim_winnings(&user);

@@ -37,6 +37,7 @@ fn test_resolve_round_stale_timestamp() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     };
 
     let result = client.try_resolve_round(&payload);
@@ -68,6 +69,7 @@ fn test_resolve_round_invalid_round_id() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     };
 
     let result = client.try_resolve_round(&payload);
@@ -100,6 +102,7 @@ fn test_resolve_round_valid_payload() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     };
 
     client.resolve_round(&payload);
@@ -133,6 +136,7 @@ fn test_resolve_round_future_timestamp() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     };
 
     let result = client.try_resolve_round(&payload);
@@ -168,6 +172,7 @@ fn test_cancelled_round_cannot_be_resolved() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
     assert_eq!(result, Err(Ok(ContractError::NoActiveRound)));
 }
@@ -247,6 +252,7 @@ fn test_resolve_round_duplicate_nonce_rejected() {
         nonce: 42u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
     assert_eq!(result, Err(Ok(ContractError::OracleNonceReused)));
 }
@@ -278,6 +284,7 @@ fn test_resolve_round_unique_nonce_resolves() {
         nonce: 7u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     // Round resolved and the nonce is recorded as consumed for that round.
@@ -560,6 +567,7 @@ fn test_oracle_deviation_rejected_when_over_threshold() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
     assert_eq!(result, Err(Ok(ContractError::OracleDeviationExceeded)));
 }
@@ -594,6 +602,7 @@ fn test_oracle_deviation_allows_at_exact_threshold() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
     assert_eq!(client.get_active_round(), None);
 }
@@ -628,6 +637,7 @@ fn test_oracle_deviation_rounding_floor_is_deterministic() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
     assert_eq!(client.get_active_round(), None);
 }
@@ -661,6 +671,7 @@ fn test_oracle_deviation_override_allows_over_threshold_and_emits_event() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     // Verify override event emitted (check before env.as_contract which resets event scope)
@@ -754,6 +765,7 @@ fn test_resolve_round_nonce_boundary_values() {
         nonce: 0u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
     assert_eq!(zero, Err(Ok(ContractError::OracleNonceReused)));
 
@@ -764,6 +776,7 @@ fn test_resolve_round_nonce_boundary_values() {
         nonce: u64::MAX,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
     assert_eq!(max, Err(Ok(ContractError::OracleNonceReused)));
 }
@@ -798,6 +811,7 @@ fn test_resolve_round_wrong_network_id_rejected() {
         nonce: 1u64,
         network_id: wrong_network,
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
     assert_eq!(result, Err(Ok(ContractError::OracleNetworkMismatch)));
 }
@@ -830,6 +844,7 @@ fn test_resolve_round_wrong_contract_addr_rejected() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: wrong_contract,
+        confidence: None,
     });
     assert_eq!(result, Err(Ok(ContractError::OracleContractMismatch)));
 }
@@ -861,6 +876,7 @@ fn test_resolve_round_valid_domain_context_resolves() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
     assert_eq!(client.get_active_round(), None);
 }
@@ -895,6 +911,166 @@ fn test_resolve_round_both_network_and_contract_wrong() {
         nonce: 1u64,
         network_id: wrong_network,
         contract_addr: wrong_contract,
+        confidence: None,
     });
     assert_eq!(result, Err(Ok(ContractError::OracleNetworkMismatch)));
+}
+// ── Oracle confidence score tests ────────────────────────────────────────────
+
+#[test]
+fn test_confidence_below_threshold_rejected() {
+    let env = Env::default();
+    let contract_id = env.register(VirtualTokenContract, ());
+    let client = VirtualTokenContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    env.mock_all_auths();
+
+    client.initialize(&admin, &oracle);
+    // Set min confidence to 8000 bps (80%)
+    client.set_oracle_min_confidence_bps(&Some(8000u32));
+    client.create_round(&1_0000000, &None);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 12;
+        li.timestamp = 100;
+    });
+
+    // Submit payload with confidence 5000 bps (50%) — below threshold
+    let result = client.try_resolve_round(&OraclePayload {
+        price: 1_2000000,
+        timestamp: 100,
+        round_id: 0,
+        nonce: 1u64,
+        network_id: env.ledger().network_id(),
+        contract_addr: contract_id.clone(),
+        confidence: Some(5000u32),
+    });
+    assert_eq!(result, Err(Ok(ContractError::InvalidPrice)));
+}
+
+#[test]
+fn test_confidence_above_threshold_accepted() {
+    let env = Env::default();
+    let contract_id = env.register(VirtualTokenContract, ());
+    let client = VirtualTokenContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    env.mock_all_auths();
+
+    client.initialize(&admin, &oracle);
+    // Set min confidence to 8000 bps (80%)
+    client.set_oracle_min_confidence_bps(&Some(8000u32));
+    client.create_round(&1_0000000, &None);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 12;
+        li.timestamp = 100;
+    });
+
+    // Submit payload with confidence 9000 bps (90%) — above threshold
+    let result = client.try_resolve_round(&OraclePayload {
+        price: 1_2000000,
+        timestamp: 100,
+        round_id: 0,
+        nonce: 1u64,
+        network_id: env.ledger().network_id(),
+        contract_addr: contract_id.clone(),
+        confidence: Some(9000u32),
+    });
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_confidence_none_accepted_without_strict_mode() {
+    let env = Env::default();
+    let contract_id = env.register(VirtualTokenContract, ());
+    let client = VirtualTokenContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    env.mock_all_auths();
+
+    client.initialize(&admin, &oracle);
+    // Set min confidence threshold but NOT strict mode
+    client.set_oracle_min_confidence_bps(&Some(8000u32));
+    client.create_round(&1_0000000, &None);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 12;
+        li.timestamp = 100;
+    });
+
+    // Legacy payload with no confidence — accepted without strict mode
+    let result = client.try_resolve_round(&OraclePayload {
+        price: 1_2000000,
+        timestamp: 100,
+        round_id: 0,
+        nonce: 1u64,
+        network_id: env.ledger().network_id(),
+        contract_addr: contract_id.clone(),
+        confidence: None,
+    });
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_confidence_none_rejected_in_strict_mode() {
+    let env = Env::default();
+    let contract_id = env.register(VirtualTokenContract, ());
+    let client = VirtualTokenContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    env.mock_all_auths();
+
+    client.initialize(&admin, &oracle);
+    client.set_oracle_min_confidence_bps(&Some(8000u32));
+    client.set_oracle_strict_mode(&true);
+    client.create_round(&1_0000000, &None);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 12;
+        li.timestamp = 100;
+    });
+
+    // Legacy payload with no confidence — rejected in strict mode
+    let result = client.try_resolve_round(&OraclePayload {
+        price: 1_2000000,
+        timestamp: 100,
+        round_id: 0,
+        nonce: 1u64,
+        network_id: env.ledger().network_id(),
+        contract_addr: contract_id.clone(),
+        confidence: None,
+    });
+    assert_eq!(result, Err(Ok(ContractError::InvalidPrice)));
+}
+
+#[test]
+fn test_confidence_no_threshold_set_accepts_any() {
+    let env = Env::default();
+    let contract_id = env.register(VirtualTokenContract, ());
+    let client = VirtualTokenContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    env.mock_all_auths();
+
+    client.initialize(&admin, &oracle);
+    // No confidence threshold set — any payload accepted
+    client.create_round(&1_0000000, &None);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 12;
+        li.timestamp = 100;
+    });
+
+    let result = client.try_resolve_round(&OraclePayload {
+        price: 1_2000000,
+        timestamp: 100,
+        round_id: 0,
+        nonce: 1u64,
+        network_id: env.ledger().network_id(),
+        contract_addr: contract_id.clone(),
+        confidence: Some(100u32), // very low but no threshold configured
+    });
+    assert!(result.is_ok());
 }

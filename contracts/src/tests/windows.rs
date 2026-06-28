@@ -329,6 +329,7 @@ fn test_resolution_only_allowed_after_run_ledgers() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
     assert_eq!(result, Err(Ok(ContractError::RoundNotEnded)));
 
@@ -345,6 +346,7 @@ fn test_resolution_only_allowed_after_run_ledgers() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     // Round should be cleared
@@ -494,3 +496,5 @@ fn test_create_round_accepts_boundary_prices() {
     client.create_round(&1_000_000_000_000_000_000u128, &None);
     assert!(client.get_active_round().is_some());
 }
+
+

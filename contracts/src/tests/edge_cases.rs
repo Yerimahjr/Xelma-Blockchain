@@ -40,6 +40,7 @@ fn test_round_with_no_participants() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     // Should clear round without errors
@@ -84,6 +85,7 @@ fn test_round_with_only_one_side() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     // Winners should only get their bets back (no losing pool to split)
@@ -147,6 +149,7 @@ fn test_accumulate_pending_winnings() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     let first_pending = client.get_pending_winnings(&alice);
@@ -168,6 +171,7 @@ fn test_accumulate_pending_winnings() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     // Should have accumulated pending from both rounds
@@ -261,6 +265,7 @@ fn test_stats_checked_overflow() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
     assert!(result.is_err());
 }
@@ -300,6 +305,7 @@ fn test_one_sided_pool_emits_event_and_refunds() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     // Capture events immediately — each subsequent contract call resets the log.
@@ -350,6 +356,7 @@ fn test_one_sided_pool_down_side_emits_event_and_refunds() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     // Capture events before subsequent contract calls reset the log.
@@ -400,6 +407,7 @@ fn test_two_sided_pool_does_not_emit_onesided_event() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     let events = env.events().all();
@@ -418,3 +426,5 @@ fn test_two_sided_pool_does_not_emit_onesided_event() {
         "normal two-sided round must not emit one-sided event"
     );
 }
+
+

@@ -99,6 +99,7 @@ fn test_chaos_double_resolve_returns_no_active_round() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     };
 
     // First resolve succeeds
@@ -168,6 +169,7 @@ fn test_chaos_pause_mid_round_then_unpause_resolve() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     // Invariant: alice gets her stake back (only winner, no losers)
@@ -197,6 +199,7 @@ fn test_chaos_resolve_empty_round_clean_state() {
         nonce: 1u64,
         network_id: env.ledger().network_id(),
         contract_addr: contract_id.clone(),
+        confidence: None,
     });
 
     // Invariant: clean state
@@ -264,3 +267,5 @@ fn test_chaos_cancel_and_restart_round_no_state_bleed() {
     // Alice's round-1 position is gone; she can place a fresh bet in round 2
     assert_eq!(client.get_user_position(&alice), None);
 }
+
+
