@@ -525,41 +525,47 @@ impl VirtualTokenContract {
         // ─── Oracle liveness ────────────────────────────────────────────────
         let heartbeat_key = DataKey::OracleHeartbeat;
         Self::_extend_persistent_ttl(&env, &heartbeat_key);
-        let (oracle_live, oracle_status) =
-            match env.storage().persistent().get::<_, OracleHeartbeatRecord>(&heartbeat_key) {
-                None => (false, 3u32),
-                Some(record) => {
-                    if record.status == 2 {
-                        (false, record.status)
-                    } else {
-                        let threshold_key = DataKey::OracleStaleThreshold;
-                        Self::_extend_persistent_ttl(&env, &threshold_key);
-                        let threshold: u64 = env
-                            .storage()
-                            .persistent()
-                            .get(&threshold_key)
-                            .unwrap_or(DEFAULT_ORACLE_STALE_THRESHOLD);
-                        let live = ledger_timestamp <= record.timestamp.saturating_add(threshold);
-                        (live, record.status)
-                    }
+        let (oracle_live, oracle_status) = match env
+            .storage()
+            .persistent()
+            .get::<_, OracleHeartbeatRecord>(&heartbeat_key)
+        {
+            None => (false, 3u32),
+            Some(record) => {
+                if record.status == 2 {
+                    (false, record.status)
+                } else {
+                    let threshold_key = DataKey::OracleStaleThreshold;
+                    Self::_extend_persistent_ttl(&env, &threshold_key);
+                    let threshold: u64 = env
+                        .storage()
+                        .persistent()
+                        .get(&threshold_key)
+                        .unwrap_or(DEFAULT_ORACLE_STALE_THRESHOLD);
+                    let live = ledger_timestamp <= record.timestamp.saturating_add(threshold);
+                    (live, record.status)
                 }
-            };
+            }
+        };
 
         // ─── Active round phase ─────────────────────────────────────────────
-        let (has_active_round, active_round_phase) =
-            match env.storage().persistent().get::<_, Round>(&DataKey::ActiveRound) {
-                None => (false, 0u32),
-                Some(round) => {
-                    let phase = if ledger_sequence < round.bet_end_ledger {
-                        1u32
-                    } else if ledger_sequence < round.end_ledger {
-                        2u32
-                    } else {
-                        3u32
-                    };
-                    (true, phase)
-                }
-            };
+        let (has_active_round, active_round_phase) = match env
+            .storage()
+            .persistent()
+            .get::<_, Round>(&DataKey::ActiveRound)
+        {
+            None => (false, 0u32),
+            Some(round) => {
+                let phase = if ledger_sequence < round.bet_end_ledger {
+                    1u32
+                } else if ledger_sequence < round.end_ledger {
+                    2u32
+                } else {
+                    3u32
+                };
+                (true, phase)
+            }
+        };
 
         // ─── Schema version ─────────────────────────────────────────────────
         let schema_version = Self::_schema_version(&env).unwrap_or(1);
@@ -929,6 +935,7 @@ impl VirtualTokenContract {
         Self::_ensure_not_paused(&env)?;
 
         let key = DataKey::MinParticipants;
+        let old_min: Option<u32> = env.storage().persistent().get(&key);
         if let Some(v) = min {
             if v == 0 || v > MAX_MIN_PARTICIPANTS {
                 return Err(ContractError::InvalidMinParticipants);
@@ -938,6 +945,12 @@ impl VirtualTokenContract {
         } else {
             env.storage().persistent().remove(&key);
         }
+        Self::_emit_config_updated(
+            &env,
+            ConfigChangeKind::MinParticipants,
+            ConfigChangePayload::MinParticipants(old_min),
+            ConfigChangePayload::MinParticipants(min),
+        );
         Ok(())
     }
 
@@ -965,8 +978,19 @@ impl VirtualTokenContract {
         }
 
         let key = DataKey::MaxPrecisionParticipants;
+        let old_max: u32 = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or(DEFAULT_MAX_PRECISION_PARTICIPANTS);
         env.storage().persistent().set(&key, &max);
         Self::_extend_persistent_ttl(&env, &key);
+        Self::_emit_config_updated(
+            &env,
+            ConfigChangeKind::MaxPrecisionParticipants,
+            ConfigChangePayload::MaxPrecisionParticipants(old_max),
+            ConfigChangePayload::MaxPrecisionParticipants(max),
+        );
         Ok(())
     }
 
@@ -991,13 +1015,29 @@ impl VirtualTokenContract {
         admin.require_auth();
         Self::_ensure_not_paused(&env)?;
 
-        env.storage().instance().set(&DataKey::MintLimitConfig, &limit);
+        let old_limit: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MintLimitConfig)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::MintLimitConfig, &limit);
+        Self::_emit_config_updated(
+            &env,
+            ConfigChangeKind::MintLimit,
+            ConfigChangePayload::MintLimit(old_limit),
+            ConfigChangePayload::MintLimit(limit),
+        );
         Ok(())
     }
 
     /// Returns the configured mint limit per ledger, or 0 if disabled.
     pub fn get_mint_limit(env: Env) -> u32 {
-        env.storage().instance().get(&DataKey::MintLimitConfig).unwrap_or(0)
+        env.storage()
+            .instance()
+            .get(&DataKey::MintLimitConfig)
+            .unwrap_or(0)
     }
 
     /// Sets the archive retention limit — the maximum number of ArchivedRound
@@ -1021,6 +1061,11 @@ impl VirtualTokenContract {
         }
 
         let key = DataKey::ArchiveRetention;
+        let old_limit: u32 = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or(DEFAULT_ARCHIVE_RETENTION);
         env.storage().persistent().set(&key, &limit);
         Self::_extend_persistent_ttl(&env, &key);
 
@@ -1028,6 +1073,12 @@ impl VirtualTokenContract {
         env.events().publish(
             (symbol_short!("archive"), symbol_short!("retention")),
             (limit,),
+        );
+        Self::_emit_config_updated(
+            &env,
+            ConfigChangeKind::ArchiveRetention,
+            ConfigChangePayload::ArchiveRetention(old_limit),
+            ConfigChangePayload::ArchiveRetention(limit),
         );
 
         Ok(())
@@ -2385,14 +2436,7 @@ impl VirtualTokenContract {
                         #[allow(deprecated)]
                         env.events().publish(
                             (symbol_short!("outcome"), symbol_short!("loss")),
-                            (
-                                user.clone(),
-                                round_id,
-                                1u32,
-                                stake,
-                                0u32,
-                                predicted_price,
-                            ),
+                            (user.clone(), round_id, 1u32, stake, 0u32, predicted_price),
                         );
                         Self::_update_stats_loss(env, user)?;
                     }
@@ -2645,7 +2689,7 @@ impl VirtualTokenContract {
         let current_balance = Self::balance(env.clone(), user.clone());
         // Compute new balance before writing — all-or-nothing guarantee
         let new_balance = Self::payout_add(current_balance, pending)?;
-        
+
         // Remove pending winnings before increasing balance (CEI pattern)
         env.storage().persistent().remove(&key);
         Self::_set_balance(&env, user.clone(), new_balance);
@@ -2942,14 +2986,24 @@ impl VirtualTokenContract {
 
         // Rate limit check: retrieve current ledger height and check against limit config.
         let sequence = env.ledger().sequence();
-        if let Some(limit) = env.storage().instance().get::<_, u32>(&DataKey::MintLimitConfig) {
+        if let Some(limit) = env
+            .storage()
+            .instance()
+            .get::<_, u32>(&DataKey::MintLimitConfig)
+        {
             if limit > 0 {
                 let counter_key = DataKey::LedgerMintCounter(sequence);
-                let current_count = env.storage().temporary().get::<_, u32>(&counter_key).unwrap_or(0);
+                let current_count = env
+                    .storage()
+                    .temporary()
+                    .get::<_, u32>(&counter_key)
+                    .unwrap_or(0);
                 if current_count >= limit {
                     panic_with_error!(&env, ContractError::MintLimitExceeded);
                 }
-                env.storage().temporary().set(&counter_key, &(current_count + 1));
+                env.storage()
+                    .temporary()
+                    .set(&counter_key, &(current_count + 1));
             }
         }
 
@@ -3140,11 +3194,7 @@ impl VirtualTokenContract {
             return Ok(());
         }
         let treasury_key = DataKey::ProtocolFeeTreasury;
-        let current: i128 = env
-            .storage()
-            .persistent()
-            .get(&treasury_key)
-            .unwrap_or(0);
+        let current: i128 = env.storage().persistent().get(&treasury_key).unwrap_or(0);
         let new_treasury = current
             .checked_add(fee_amount)
             .ok_or(ContractError::Overflow)?;
@@ -3231,6 +3281,85 @@ impl VirtualTokenContract {
         Ok((distributable, fee_amount))
     }
 
+    fn _emit_config_updated(
+        env: &Env,
+        kind: ConfigChangeKind,
+        old_value: ConfigChangePayload,
+        new_value: ConfigChangePayload,
+    ) {
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("config"), symbol_short!("updated")),
+            (kind, old_value, new_value),
+        );
+    }
+
+    fn _current_config_payload(env: &Env, kind: &ConfigChangeKind) -> ConfigChangePayload {
+        match kind {
+            ConfigChangeKind::Windows => {
+                let bet: u32 = env
+                    .storage()
+                    .persistent()
+                    .get(&DataKey::BetWindowLedgers)
+                    .unwrap_or(DEFAULT_BET_WINDOW_LEDGERS);
+                let run: u32 = env
+                    .storage()
+                    .persistent()
+                    .get(&DataKey::RunWindowLedgers)
+                    .unwrap_or(DEFAULT_RUN_WINDOW_LEDGERS);
+                ConfigChangePayload::Windows(bet, run)
+            }
+            ConfigChangeKind::MaxStake => {
+                ConfigChangePayload::MaxStake(env.storage().persistent().get(&DataKey::MaxStake))
+            }
+            ConfigChangeKind::MaxUserRoundExposure => ConfigChangePayload::MaxUserRoundExposure(
+                env.storage()
+                    .persistent()
+                    .get(&DataKey::MaxUserRoundExposure),
+            ),
+            ConfigChangeKind::MaxPendingWinnings => ConfigChangePayload::MaxPendingWinnings(
+                env.storage().persistent().get(&DataKey::MaxPendingWinnings),
+            ),
+            ConfigChangeKind::OracleStaleThreshold => ConfigChangePayload::OracleStaleThreshold(
+                env.storage()
+                    .persistent()
+                    .get(&DataKey::OracleStaleThreshold)
+                    .unwrap_or(DEFAULT_ORACLE_STALE_THRESHOLD),
+            ),
+            ConfigChangeKind::OracleMaxDeviationBps => ConfigChangePayload::OracleMaxDeviationBps(
+                env.storage()
+                    .persistent()
+                    .get(&DataKey::OracleMaxDeviationBps),
+            ),
+            ConfigChangeKind::ProtocolFeeBps => ConfigChangePayload::ProtocolFeeBps(
+                env.storage().persistent().get(&DataKey::ProtocolFeeBps),
+            ),
+            ConfigChangeKind::MinParticipants => ConfigChangePayload::MinParticipants(
+                env.storage().persistent().get(&DataKey::MinParticipants),
+            ),
+            ConfigChangeKind::MaxPrecisionParticipants => {
+                ConfigChangePayload::MaxPrecisionParticipants(
+                    env.storage()
+                        .persistent()
+                        .get(&DataKey::MaxPrecisionParticipants)
+                        .unwrap_or(DEFAULT_MAX_PRECISION_PARTICIPANTS),
+                )
+            }
+            ConfigChangeKind::MintLimit => ConfigChangePayload::MintLimit(
+                env.storage()
+                    .instance()
+                    .get(&DataKey::MintLimitConfig)
+                    .unwrap_or(0),
+            ),
+            ConfigChangeKind::ArchiveRetention => ConfigChangePayload::ArchiveRetention(
+                env.storage()
+                    .persistent()
+                    .get(&DataKey::ArchiveRetention)
+                    .unwrap_or(DEFAULT_ARCHIVE_RETENTION),
+            ),
+        }
+    }
+
     fn _schedule_config_change(
         env: &Env,
         kind: ConfigChangeKind,
@@ -3276,6 +3405,7 @@ impl VirtualTokenContract {
         kind: &ConfigChangeKind,
         payload: &ConfigChangePayload,
     ) -> Result<(), ContractError> {
+        let old_value = Self::_current_config_payload(env, kind);
         match (kind, payload) {
             (ConfigChangeKind::Windows, ConfigChangePayload::Windows(bet, run)) => {
                 Self::_validate_windows(*bet, *run)?;
@@ -3352,10 +3482,7 @@ impl VirtualTokenContract {
                 }
             }
 
-            (
-                ConfigChangeKind::ProtocolFeeBps,
-                ConfigChangePayload::ProtocolFeeBps(bps),
-            ) => {
+            (ConfigChangeKind::ProtocolFeeBps, ConfigChangePayload::ProtocolFeeBps(bps)) => {
                 Self::_validate_protocol_fee_bps(*bps)?;
                 let key = DataKey::ProtocolFeeBps;
                 if let Some(v) = bps {
@@ -3372,6 +3499,7 @@ impl VirtualTokenContract {
             }
             _ => return Err(ContractError::InvalidMode),
         }
+        Self::_emit_config_updated(env, kind.clone(), old_value, payload.clone());
         Ok(())
     }
 
